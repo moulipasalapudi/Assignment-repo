@@ -1,0 +1,56 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+        with:
+          region: us-east-1
+
+      - name: Build, tag, and push image to ECR
+        env:
+          ECR_REGISTRY: 294452575100.dkr.ecr.us-east-1.amazonaws.com
+          ECR_REPOSITORY: project-demo
+          IMAGE_TAG: latest
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Install kubectl
+        run: |
+          curl -LO "https://storage.googleapis.com/kubernetes-release/release/v1.21.1/bin/windows/amd64/kubectl.exe"
+          mv kubectl.exe /usr/local/bin/kubectl
+          chmod +x /usr/local/bin/kubectl
+
+      - name: Start Minikube
+        run: minikube start
+
+      - name: Wait for Minikube to be ready
+        run: minikube status
+
+      - name: Configure kubectl to connect to Minikube
+        run: kubectl config use-context minikube
+
+      - name: Deploy application to Kubernetes
+        run: kubectl apply -f cluster.yaml
+
+      - name: Wait for deployment to complete
+        run: kubectl rollout status deployment/<deployment-name> --timeout=5m
+
+      - name: Apply Ingress configuration
+        run: kubectl apply -f ingress.yaml
